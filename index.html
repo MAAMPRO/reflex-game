@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Reflex | MAAMPRO Games</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: #0a0a12;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            text-align: center;
+            background: rgba(20, 20, 35, 0.8);
+            border: 2px solid #00ffcc;
+            box-shadow: 0 0 25px rgba(0, 255, 204, 0.3);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 440px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 1.8rem;
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.5);
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+        .scoreboard {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 16px;
+            font-size: 0.95rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .scoreboard span {
+            color: #00ffcc;
+            font-weight: bold;
+        }
+        canvas {
+            background: #050508;
+            border: 2px solid #333;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto 16px auto;
+            cursor: crosshair;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+        }
+        .btn {
+            background: linear-gradient(135deg, #00ffcc, #00b3ff);
+            color: #0a0a12;
+            border: none;
+            padding: 12px 28px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0, 255, 204, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 204, 0.6);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+        .instructions {
+            font-size: 0.8rem;
+            color: #8a8a9e;
+            margin-top: 12px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>NEON REFLEX</h1>
+        <div class="scoreboard">
+            <div>Score: <span id="scoreVal">0</span></div>
+            <div>Lives: <span id="livesVal">3</span></div>
+            <div>High: <span id="highVal">0</span></div>
+        </div>
+
+        <canvas id="gameCanvas" width="380" height="380"></canvas>
+
+        <button id="startBtn" class="btn" onclick="startGame()">Start Game</button>
+
+        <div class="instructions">
+            Click or tap the glowing neon orbs before they fade! Avoid red glitch orbs.
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const scoreVal = document.getElementById("scoreVal");
+        const livesVal = document.getElementById("livesVal");
+        const highVal = document.getElementById("highVal");
+
+        let score = 0;
+        let lives = 3;
+        let highScore = localStorage.getItem("neon_high_score") || 0;
+        highVal.textContent = highScore;
+
+        let gameRunning = false;
+        let targets = [];
+        let spawnTimer = 0;
+        let spawnInterval = 45; // frames
+        let gameSpeed = 1;
+
+        class Target {
+            constructor() {
+                this.x = Math.random() * (canvas.width - 60) + 30;
+                this.y = Math.random() * (canvas.height - 60) + 30;
+                this.radius = 22;
+                this.maxRadius = 26;
+                this.life = 1; // 1 down to 0
+                this.decay = 0.015 + (gameSpeed * 0.003);
+                this.isBad = Math.random() < 0.25; // 25% chance of trap orb
+                this.color = this.isBad ? "#ff3366" : "#00ffcc";
+            }
+
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life * 0.8;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 12;
+                ctx.fill();
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            update() {
+                this.life -= this.decay;
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            gameSpeed = 1;
+            spawnInterval = 45;
+            targets = [];
+            gameRunning = true;
+            document.getElementById("startBtn").style.display = "none";
+            scoreVal.textContent = score;
+            livesVal.textContent = lives;
+            loop();
+        }
+
+        canvas.addEventListener("click", (e) => {
+            if (!gameRunning) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            let hit = false;
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const t = targets[i];
+                const dist = Math.hypot(clickX - t.x, clickY - t.y);
+                if (dist <= t.radius) {
+                    hit = true;
+                    if (t.isBad) {
+                        lives -= 2; // Penalty
+                    } else {
+                        score += 10;
+                        gameSpeed += 0.03; // Progressive difficulty
+                    }
+                    targets.splice(i, 1);
+                    break;
+                }
+            }
+
+            scoreVal.textContent = score;
+            livesVal.textContent = Math.max(0, lives);
+
+            if (lives <= 0) {
+                gameOver();
+            }
+        });
+
+        function loop() {
+            if (!gameRunning) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Spawn logic
+            spawnTimer++;
+            if (spawnTimer >= Math.max(15, spawnInterval - Math.floor(score / 50))) {
+                targets.push(new Target());
+                spawnTimer = 0;
+            }
+
+            // Update & Draw targets
+            for (let i = targets.length - 1; i >= 0; i--) {
+                let t = targets[i];
+                t.update();
+                t.draw();
+
+                // If target faded out completely
+                if (t.life <= 0) {
+                    targets.splice(i, 1);
+                    if (!t.isBad) {
+                        lives--; // Missed good orb penalty
+                        livesVal.textContent = Math.max(0, lives);
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("neon_high_score", highScore);
+                highVal.textContent = highScore;
+            }
+
+            ctx.fillStyle = "rgba(10, 10, 18, 0.85)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "#ff3366";
+            ctx.font = "bold 26px Segoe UI";
+            ctx.textAlign = "center";
+            ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+
+            ctx.fillStyle = "#fff";
+            ctx.font = "16px Segoe UI";
+            ctx.fillText(`Final Score: ${score}`, canvas.width / 2, canvas.height / 2 + 15);
+
+            document.getElementById("startBtn").textContent = "Play Again";
+            document.getElementById("startBtn").style.display = "inline-block";
+        }
+    </script>
+</body>
+</html>
